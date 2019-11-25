@@ -189,8 +189,9 @@ def encode_data(predicates, joins, column_min_max_vals, column2vec, op2vec, join
     return predicates_enc, joins_enc
 
 
-def encode_sparql_data(predicates, joins, column2vec, op2vec, join2vec):
+def encode_sparql_data(predicates, predicates_uris, joins, column2vec, op2vec, join2vec, column2uris_vec, op2uris_vec):
     predicates_enc = []
+    predicates_uris_enc = []
     joins_enc = []
     for i, query in enumerate(predicates):
         predicates_enc.append(list())
@@ -218,4 +219,24 @@ def encode_sparql_data(predicates, joins, column2vec, op2vec, join2vec):
             # Join instruction
             join_vec = join2vec[predicate]
             joins_enc[i].append(join_vec)
-    return predicates_enc, joins_enc
+
+    for j, query2 in enumerate(predicates_uris):
+        predicates_uris_enc.append(list())
+        #predicates uris <col, op, uri>
+        for predicate in query2:
+            if len(predicate) == 3:
+                # Proper predicate
+                column = predicate[0]
+                operator = predicate[1]
+                val = predicate[2]
+                # norm_val = normalize_data(val, column, column_min_max_vals)
+
+                pred_uri_vec = []
+                pred_uri_vec.append(column2uris_vec[column])
+                pred_uri_vec.append(op2uris_vec[operator])
+                # pred_vec.append(norm_val)
+                pred_uri_vec = np.hstack(pred_uri_vec)
+            else:
+                pred_uri_vec = np.zeros((len(column2uris_vec) + len(op2uris_vec)))
+            predicates_uris_enc[j].append(pred_uri_vec)
+    return predicates_enc, joins_enc, predicates_uris_enc

@@ -88,15 +88,16 @@ def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_e
         num_queries,
         num_materialized_samples
     )
-    table2vec, column2vec, op2vec, join2vec = dicts
+    table2vec, column2vec, op2vec, join2vec, columnuri2vec, opuri2vec, = dicts
 
     # Train model
     sample_feats = len(table2vec)
     # sample_feats = len(table2vec) + num_materialized_samples
-    predicate_feats = len(column2vec) + len(op2vec) + 1
+    predicate_feats = len(column2vec) + len(op2vec)
+    predicateuri_feats = len(columnuri2vec) + len(opuri2vec)
     join_feats = len(join2vec)
 
-    model = SetConv(sample_feats, predicate_feats, join_feats, hid_units)
+    model = SetConv(sample_feats, predicate_feats, predicateuri_feats, join_feats, hid_units)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -112,15 +113,20 @@ def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_e
 
         for batch_idx, data_batch in enumerate(train_data_loader):
 
-            samples, predicates, joins, targets, sample_masks, predicate_masks, join_masks = data_batch
+            samples, predicates, joins,predicates_uri, targets, sample_masks, predicate_masks, join_masks = data_batch
 
             if cuda:
-                samples, predicates, joins, targets = samples.cuda(), predicates.cuda(), joins.cuda(), targets.cuda()
+                samples, predicates,predicates_uri, joins, targets = samples.cuda(), predicates.cuda(), predicates_uri.cuda(), joins.cuda(), targets.cuda()
                 sample_masks, predicate_masks, join_masks = sample_masks.cuda(), predicate_masks.cuda(), join_masks.cuda()
-            samples, predicates, joins, targets = Variable(samples), Variable(predicates), Variable(joins), Variable(
-                targets)
-            sample_masks, predicate_masks, join_masks = Variable(sample_masks), Variable(predicate_masks), Variable(
-                join_masks)
+            samples, predicates,predicates_uri, joins, targets = Variable(samples), \
+                                                                 Variable(predicates), \
+                                                                 Variable(predicates_uri), \
+                                                                 Variable(joins),\
+                                                                 Variable(targets)
+            sample_masks, predicate_masks,predicate_uri_masks, join_masks = Variable(sample_masks),\
+                                                                            Variable(predicate_masks),\
+                                                                            Variable(predicate_uri_masks),\
+                                                                            Variable(join_masks)
 
             optimizer.zero_grad()
             outputs = model(samples, predicates, joins, sample_masks, predicate_masks, join_masks)

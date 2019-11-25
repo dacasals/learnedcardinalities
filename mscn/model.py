@@ -6,18 +6,20 @@ import torch.nn.functional as F
 # Define model architecture
 
 class SetConv(nn.Module):
-    def __init__(self, sample_feats, predicate_feats, join_feats, hid_units):
+    def __init__(self, sample_feats, predicate_feats, predicate_uri_feats, join_feats, hid_units):
         super(SetConv, self).__init__()
         self.sample_mlp1 = nn.Linear(sample_feats, hid_units)
         self.sample_mlp2 = nn.Linear(hid_units, hid_units)
         self.predicate_mlp1 = nn.Linear(predicate_feats, hid_units)
         self.predicate_mlp2 = nn.Linear(hid_units, hid_units)
+        self.predicate_uri_mlp1 = nn.Linear(predicate_uri_feats, hid_units)
+        self.predicate_uri_mlp2 = nn.Linear(hid_units, hid_units)
         self.join_mlp1 = nn.Linear(join_feats, hid_units)
         self.join_mlp2 = nn.Linear(hid_units, hid_units)
         self.out_mlp1 = nn.Linear(hid_units * 3, hid_units)
         self.out_mlp2 = nn.Linear(hid_units, 1)
 
-    def forward(self, samples, predicates, joins, sample_mask, predicate_mask, join_mask):
+    def forward(self, samples, predicates,predicates_uris, joins, sample_mask, predicate_mask,predicate_uri_mask, join_mask):
         # samples has shape [batch_size x num_joins+1 x sample_feats]
         # predicates has shape [batch_size x num_predicates x predicate_feats]
         # joins has shape [batch_size x num_joins x join_feats]
@@ -35,6 +37,13 @@ class SetConv(nn.Module):
         hid_predicate = torch.sum(hid_predicate, dim=1, keepdim=False)
         predicate_norm = predicate_mask.sum(1, keepdim=False)
         hid_predicate = hid_predicate / predicate_norm
+
+        hid_predicate_uri = F.relu(self.predicate_uri_mlp1(predicates_uris))
+        hid_predicate_uri = F.relu(self.predicate_uri_mlp2(hid_predicate_uri))
+        hid_predicate_uri = hid_predicate_uri * predicate_uri_mask
+        hid_predicate_uri = torch.sum(hid_predicate_uri, dim=1, keepdim=False)
+        predicate_uri_norm = predicate_uri_mask.sum(1, keepdim=False)
+        hid_predicate_uri = hid_predicate_uri / predicate_uri_norm
 
         hid_join = F.relu(self.join_mlp1(joins))
         hid_join = F.relu(self.join_mlp2(hid_join))

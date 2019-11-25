@@ -112,7 +112,7 @@ def load_and_encode_train_data(url_queries, num_queries, num_materialized_sample
 
     # Get feature encoding and proper normalization
     samples_enc = encode_tables(tables, table2vec)
-    predicates_enc, joins_enc = encode_sparql_data(predicates, joins, column2vec, op2vec, join2vec)
+    predicates_enc, joins_enc, predicates_uris_enc = encode_sparql_data(predicates,predicates_uris, joins, column2vec, op2vec, join2vec,column2uris_vec,op2uris_vec)
     label_norm, min_val, max_val = normalize_labels(label)
 
     # Split in training and validation samples
@@ -121,11 +121,13 @@ def load_and_encode_train_data(url_queries, num_queries, num_materialized_sample
 
     samples_train = samples_enc[:num_train]
     predicates_train = predicates_enc[:num_train]
+    predicates_uri_train = predicates_uris_enc[:num_train]
     joins_train = joins_enc[:num_train]
     labels_train = label_norm[:num_train]
 
     samples_test = samples_enc[num_train:num_train + num_test]
     predicates_test = predicates_enc[num_train:num_train + num_test]
+    predicates_uri_test = predicates_uris_enc[num_train:num_train + num_test]
     joins_test = joins_enc[num_train:num_train + num_test]
     labels_test = label_norm[num_train:num_train + num_test]
 
@@ -135,9 +137,9 @@ def load_and_encode_train_data(url_queries, num_queries, num_materialized_sample
     max_num_joins = max(max([len(j) for j in joins_train]), max([len(j) for j in joins_test]))
     max_num_predicates = max(max([len(p) for p in predicates_train]), max([len(p) for p in predicates_test]))
 
-    dicts = [table2vec, column2vec, op2vec, join2vec]
-    train_data = [samples_train, predicates_train, joins_train]
-    test_data = [samples_test, predicates_test, joins_test]
+    dicts = [table2vec, column2vec, op2vec, join2vec,column2uris_vec,op2uris_vec]
+    train_data = [samples_train, predicates_train, joins_train, predicates_uri_train]
+    test_data = [samples_test, predicates_test, joins_test, predicates_uri_test]
     return dicts, \
            min_val, \
            max_val, \
