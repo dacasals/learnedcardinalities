@@ -18,6 +18,24 @@ def get_all_column_names(predicates):
                 column_names.add(column_name)
     return column_names
 
+def get_all_column_op_uris_names(predicates):
+    column_names = set()
+    op_names = set()
+    uri_names = set()
+    for query in predicates:
+        for predicate in query:
+            if len(predicate) == 3:
+
+                column_name = predicate[0]
+                column_names.add(column_name)
+
+                op_name = predicate[1]
+                op_names.add(op_name)
+
+                uri_name = predicate[2]
+                uri_names.add(uri_name)
+
+    return column_names, op_names, uri_names
 
 def get_all_table_names(tables):
     table_names = set()
@@ -126,6 +144,20 @@ def encode_samples(tables, samples, table2vec):
     return samples_enc
 
 
+def encode_tables(tables, table2vec):
+    samples_enc = []
+    for i, query in enumerate(tables):
+        samples_enc.append(list())
+        for j, table in enumerate(query):
+            sample_vec = []
+            # Append table one-hot vector
+            sample_vec.append(table2vec[table])
+            # Append bit vector
+            sample_vec = np.hstack(sample_vec)
+            samples_enc[i].append(sample_vec)
+    return samples_enc
+
+
 def encode_data(predicates, joins, column_min_max_vals, column2vec, op2vec, join2vec):
     predicates_enc = []
     joins_enc = []
@@ -147,6 +179,38 @@ def encode_data(predicates, joins, column_min_max_vals, column2vec, op2vec, join
                 pred_vec = np.hstack(pred_vec)
             else:
                 pred_vec = np.zeros((len(column2vec) + len(op2vec) + 1))
+
+            predicates_enc[i].append(pred_vec)
+
+        for predicate in joins[i]:
+            # Join instruction
+            join_vec = join2vec[predicate]
+            joins_enc[i].append(join_vec)
+    return predicates_enc, joins_enc
+
+
+def encode_sparql_data(predicates, joins, column2vec, op2vec, join2vec):
+    predicates_enc = []
+    joins_enc = []
+    for i, query in enumerate(predicates):
+        predicates_enc.append(list())
+        joins_enc.append(list())
+        for predicate in query:
+            if len(predicate) == 3:
+                # Proper predicate
+                column = predicate[0]
+                operator = predicate[1]
+                val = predicate[2]
+                # norm_val = normalize_data(val, column, column_min_max_vals)
+
+                pred_vec = []
+                pred_vec.append(column2vec[column])
+                pred_vec.append(op2vec[operator])
+                # pred_vec.append(norm_val)
+                pred_vec = np.hstack(pred_vec)
+            else:
+                pred_vec = np.zeros((len(column2vec) + len(op2vec)))
+                # pred_vec = np.zeros((len(column2vec) + len(op2vec) + 1))
 
             predicates_enc[i].append(pred_vec)
 
