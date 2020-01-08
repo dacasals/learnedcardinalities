@@ -72,7 +72,20 @@ def print_qerror(preds_unnorm, labels_unnorm):
     print("Mean: {}".format(np.mean(qerror)))
 
 
-def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_epochs, batch_size, hid_units, cuda):
+def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_epochs, batch_size, hid_units, cuda, delimiter):
+    """
+
+    :param workload_name:
+    :param url_queries:
+    :param num_queries:
+    :param num_samples:
+    :param num_epochs:
+    :param batch_size:
+    :param hid_units:
+    :param cuda:
+    :param delimiter_col: Delimiter of column
+    :return:
+    """
     # Load training and validation data
     num_materialized_samples = num_samples
     dicts, \
@@ -86,7 +99,8 @@ def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_e
         = get_train_datasets(
         url_queries,
         num_queries,
-        num_materialized_samples
+        num_materialized_samples,
+        delimiter=delimiter
     )
     table2vec, column2vec, op2vec, join2vec, columnuri2vec, opuri2vec, = dicts
 
@@ -161,7 +175,7 @@ def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_e
 
     # Load test data
     file_name = "workloads/" + workload_name
-    joins, predicates, tables, samples, label = load_data(file_name, num_materialized_samples)
+    joins,joins_v1, predicates, tables, samples, label = load_data(file_name, num_materialized_samples)
 
     # Get feature encoding and proper normalization
     samples_test = encode_samples(tables, samples, table2vec)
@@ -198,6 +212,7 @@ def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_e
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("testset", help="synthetic, scale, or job-light")
+    parser.add_argument("--delimiter_col", help="delimiter for column", type=str, default="~")
     parser.add_argument("--queries_data", help="url for dataset of training queries", type=str, default='data/train')
     parser.add_argument("--queries", help="number of training queries (default: 10000)", type=int, default=10000)
     parser.add_argument("--samples", help="number of training queries (default: 10000)", type=int, default=10000)
@@ -206,7 +221,7 @@ def main():
     parser.add_argument("--hid", help="number of hidden units (default: 256)", type=int, default=256)
     parser.add_argument("--cuda", help="use CUDA", action="store_true")
     args = parser.parse_args()
-    train_and_predict(args.testset, args.queries_data, args.queries, args.samples, args.epochs, args.batch, args.hid, args.cuda)
+    train_and_predict(args.testset, args.queries_data, args.queries, args.samples, args.epochs, args.batch, args.hid, args.cuda, args.delimiter_col)
 
 if __name__ == "__main__":
     main()
