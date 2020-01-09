@@ -5,7 +5,7 @@ from torch.utils.data import dataset
 from mscn.util import *
 
 
-def load_data(file_name, num_materialized_samples, with_header=True, delimiter='~'):
+def load_data(data, num_materialized_samples, with_header=True, delimiter='~'):
     joins = []
     joins_v1 = []
     predicates = []
@@ -13,61 +13,57 @@ def load_data(file_name, num_materialized_samples, with_header=True, delimiter='
     tables = []
     samples = []
     label = []
-    header_ignored=False
-    tables_pos = 0
-    cardinality_pos = 3
-    joins_pos = 1
-    predicates_pos = 2
-    predicatesuri_pos = 3
 
     # Load queries
-    with open(file_name, 'rU') as f:
-        data_raw = list(list(rec) for rec in csv.reader(f, delimiter=delimiter))
-        for row in data_raw:
-            if with_header and not header_ignored:
-                tables_pos = row.index("tables")
-                joins_pos = row.index("joins")
-                joins_v1_pos = row.index("joins_v1")
-                predicates_pos = row.index("predicates_v2int")
-                predicatesuri_pos = row.index("pred_v2uri_cardinality")
-                cardinality_pos = row.index("cardinality")
-                header_ignored = True
-                continue
-            tables.append(list(filter(None, row[tables_pos].split(','))))
+    # with open(file_name, 'rU') as f:
+    #     data_raw = list(list(rec) for rec in csv.reader(f, delimiter=delimiter))
+    columns = list(data.columns)
+    tables_pos = columns.index("tables")
+    joins_pos = columns.index("joins")
+    joins_v1_pos = columns.index("joins_v1")
+    predicates_pos = columns.index("predicates_v2int")
+    predicatesuri_pos = columns.index("pred_v2uri_cardinality")
+    cardinality_pos = columns.index("cardinality")
+    for index, row in data.iterrows():
+        # if with_header and not header_ignored:
+        #
+        #     header_ignored = True
+        #     continue
+        tables.append(list(filter(None, row[tables_pos].split(','))))
 
-            joins.append(list(filter(None, row[joins_pos].split(','))))
+        joins.append(list(filter(None, row[joins_pos].split(','))))
 
-            joins_v1.append(list(filter(None, row[joins_v1_pos].split(','))))
+        joins_v1.append(list(filter(None, row[joins_v1_pos].split(','))))
 
-            predicates.append(list(filter(None, row[predicates_pos].split(','))))
+        predicates.append(list(filter(None, row[predicates_pos].split(','))))
 
-            predicates_uris.append(list(filter(None, row[predicatesuri_pos].split(','))))
-            if int(row[cardinality_pos]) < 1:
-                print("Queries must have non-zero cardinalities")
-                exit(1)
-            label.append(row[cardinality_pos])
+        predicates_uris.append(list(filter(None, row[predicatesuri_pos].split(','))))
+        if int(row[cardinality_pos]) < 1:
+            print("Queries must have non-zero cardinalities")
+            exit(1)
+        label.append(row[cardinality_pos])
     print("Loaded queries")
 
     # Load bitmaps
-    if num_materialized_samples > 0:
-        num_bytes_per_bitmap = int((num_materialized_samples + 7) >> 3)
-        with open(file_name[:-4] + ".bitmaps", 'rb') as f:
-            for i in range(len(tables)):
-                four_bytes = f.read(4)
-                if not four_bytes:
-                    print("Error while reading 'four_bytes'")
-                    exit(1)
-                num_bitmaps_curr_query = int.from_bytes(four_bytes, byteorder='little')
-                bitmaps = np.empty((num_bitmaps_curr_query, num_bytes_per_bitmap * 8), dtype=np.uint8)
-                for j in range(num_bitmaps_curr_query):
-                    # Read bitmap
-                    bitmap_bytes = f.read(num_bytes_per_bitmap)
-                    if not bitmap_bytes:
-                        print("Error while reading 'bitmap_bytes'")
-                        exit(1)
-                    bitmaps[j] = np.unpackbits(np.frombuffer(bitmap_bytes, dtype=np.uint8))
-                samples.append(bitmaps)
-        print("Loaded bitmaps")
+    # if num_materialized_samples > 0:
+    #     num_bytes_per_bitmap = int((num_materialized_samples + 7) >> 3)
+    #     with open(file_name[:-4] + ".bitmaps", 'rb') as f:
+    #         for i in range(len(tables)):
+    #             four_bytes = f.read(4)
+    #             if not four_bytes:
+    #                 print("Error while reading 'four_bytes'")
+    #                 exit(1)
+    #             num_bitmaps_curr_query = int.from_bytes(four_bytes, byteorder='little')
+    #             bitmaps = np.empty((num_bitmaps_curr_query, num_bytes_per_bitmap * 8), dtype=np.uint8)
+    #             for j in range(num_bitmaps_curr_query):
+    #                 # Read bitmap
+    #                 bitmap_bytes = f.read(num_bytes_per_bitmap)
+    #                 if not bitmap_bytes:
+    #                     print("Error while reading 'bitmap_bytes'")
+    #                     exit(1)
+    #                 bitmaps[j] = np.unpackbits(np.frombuffer(bitmap_bytes, dtype=np.uint8))
+    #             samples.append(bitmaps)
+    #     print("Loaded bitmaps")
 
     # Split predicates
     joins_v1 = [list(chunks(d, 3)) for d in joins_v1]
@@ -77,11 +73,11 @@ def load_data(file_name, num_materialized_samples, with_header=True, delimiter='
     return joins, joins_v1, predicates, predicates_uris, tables, samples, label
 
 
-def load_and_encode_train_data(url_queries, num_queries, num_materialized_samples, delimiter):
-    file_name_queries = url_queries
+def load_and_encode_train_data(data, num_queries, num_materialized_samples, delimiter):
+    # file_name_queries = url_queries
     # file_name_column_min_max_vals = "data/column_min_max_vals.csv"
 
-    joins, joins_v1, predicates, predicates_uris, tables, samples, label = load_data(file_name_queries, num_materialized_samples,delimiter=delimiter)
+    joins, joins_v1, predicates, predicates_uris, tables, samples, label = load_data(data, num_materialized_samples, delimiter=delimiter)
 
     # Get column name dict for col,operator,val
     column_names = get_all_column_names(predicates)
@@ -114,14 +110,19 @@ def load_and_encode_train_data(url_queries, num_queries, num_materialized_sample
     # Get feature encoding and proper normalization
     samples_enc  = encode_tables(tables, table2vec)
     joins_v1_enc = encode_joins_v1(joins_v1, join_v1_2vec, types_injoin_2vec)
+    len_joins_v1_enc = len(join_v1_2vec) * 2 + len(types_injoin_2vec)
+
+    #Get Col_min_max_vals from data predicates
+    column_min_max_vals = get_column_min_max_vals_preds(predicates)
+    column_min_max_cards = get_column_min_max_cards_predsuris(predicates_uris)
 
     #Getting the encoded data form predicates, predicates_uris joins and additionaly column_min_max_vals of predicates.
-    predicates_enc, joins_enc, predicates_uris_enc,column_min_max_vals = encode_sparql_data(predicates, predicates_uris, joins, column2vec, op2vec, join2vec,column2uris_vec, op2uris_vec, uris2uris_vec)
+    predicates_enc, joins_enc, predicates_uris_enc = encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, predicates_uris, joins, column2vec, op2vec, join2vec,column2uris_vec, op2uris_vec, uris2uris_vec)
     label_norm, min_val, max_val = normalize_labels(label)
-
+    len_pred_uri_enc = len(predicates_uris_enc[0][0])
     # Split in training and validation samples
-    num_train = int(num_queries * 0.9)
-    num_test = num_queries - num_train
+    num_train = int(data.shape[0] * 0.9)
+    num_test = data.shape[0] - num_train
 
     samples_train = samples_enc[:num_train]
     predicates_train = predicates_enc[:num_train]
@@ -130,25 +131,25 @@ def load_and_encode_train_data(url_queries, num_queries, num_materialized_sample
     joins_v1_train = joins_v1_enc[:num_train]
     labels_train = label_norm[:num_train]
 
-    samples_test = samples_enc[num_train:num_train + num_test]
-    predicates_test = predicates_enc[num_train:num_train + num_test]
+    samples_test        = samples_enc[num_train:num_train + num_test]
+    predicates_test     = predicates_enc[num_train:num_train + num_test]
     predicates_uri_test = predicates_uris_enc[num_train:num_train + num_test]
-    joins_test = joins_enc[num_train:num_train + num_test]
-    joins_v1_test = joins_enc[num_train:num_train + num_test]
-    labels_test = label_norm[num_train:num_train + num_test]
+    joins_test          = joins_enc[num_train:num_train + num_test]
+    joins_v1_test       = joins_v1_enc[num_train:num_train + num_test]
+    labels_test         = label_norm[num_train:num_train + num_test]
 
     print("Number of training samples: {}".format(len(labels_train)))
     print("Number of validation samples: {}".format(len(labels_test)))
 
-    max_num_joins = max(max([len(j) for j in joins_train]), max([len(j) for j in joins_test]))
+    max_num_joins    = max(max([len(j) for j in joins_train]),    max([len(j) for j in joins_test]))
     max_num_v1_joins = max(max([len(j) for j in joins_v1_train]), max([len(j) for j in joins_v1_test]))
 
     max_num_predicates = max(max([len(p) for p in predicates_train]), max([len(p) for p in predicates_test]))
     max_num_predicates_uris = max(max([len(p) for p in predicates_uri_train]), max([len(p) for p in predicates_uri_test]))
 
-    dicts = [table2vec, column2vec, op2vec, join2vec, join_v1_2vec, column2uris_vec, op2uris_vec]
+    dicts = [table2vec, column2vec, op2vec, join2vec, join_v1_2vec, types_injoin_2vec, column2uris_vec, op2uris_vec, uris2uris_vec, len_pred_uri_enc]
     train_data = [samples_train, predicates_train, joins_train, joins_v1_train, predicates_uri_train]
-    test_data = [samples_test, predicates_test, joins_test,joins_v1_test, predicates_uri_test]
+    test_data =  [samples_test , predicates_test , joins_test , joins_v1_test , predicates_uri_test]
     return dicts,\
            column_min_max_vals, \
            min_val, \
@@ -215,7 +216,7 @@ def make_dataset(samples, predicates, joins, joins_v1, predicates_uri, labels, m
 
     for predicate in predicates_uri:
         predicate_tensor = np.vstack(predicate)
-        num_pad = max_num_predicates - predicate_tensor.shape[0]
+        num_pad = max_num_predicates_uris - predicate_tensor.shape[0]
         predicate_mask = np.ones_like(predicate_tensor).mean(1, keepdims=True)
         predicate_tensor = np.pad(predicate_tensor, ((0, num_pad), (0, 0)), 'constant')
         predicate_mask = np.pad(predicate_mask, ((0, num_pad), (0, 0)), 'constant')
@@ -249,15 +250,15 @@ def make_dataset(samples, predicates, joins, joins_v1, predicates_uri, labels, m
         sample_tensors,
         predicate_tensors,
         join_tensors,
+        predicate_uri_tensors,
         target_tensor,
         sample_masks,
         predicate_masks,
         join_masks,
-        predicate_uri_tensors,
         predicate_uri_masks
     )
 
-def get_train_datasets(url_queries, num_queries, num_materialized_samples, delimiter):
+def get_train_datasets(data, num_queries, num_materialized_samples, delimiter):
     dicts, \
     column_min_max_vals, \
     min_val, max_val, \
@@ -271,7 +272,7 @@ def get_train_datasets(url_queries, num_queries, num_materialized_samples, delim
     test_data \
         = load_and_encode_train_data \
             (
-            url_queries,
+            data,
             num_queries,
             num_materialized_samples,
             delimiter=delimiter
@@ -283,14 +284,17 @@ def get_train_datasets(url_queries, num_queries, num_materialized_samples, delim
         max_num_joins=max_num_joins,
         max_num_v1_joins=max_num_v1_joins,
         max_num_predicates=max_num_predicates,
-        max_num_predicates_uris=max_num_predicates_uris)
+        max_num_predicates_uris=max_num_predicates_uris
+    )
     print("Created TensorDataset for training data")
 
     test_dataset = make_dataset(
         *test_data,
         labels=labels_test,
         max_num_joins=max_num_joins,
-        max_num_predicates=max_num_predicates
+        max_num_v1_joins=max_num_v1_joins,
+        max_num_predicates=max_num_predicates,
+        max_num_predicates_uris = max_num_predicates_uris
     )
     print("Created TensorDataset for validation data")
     return dicts, \
@@ -299,6 +303,8 @@ def get_train_datasets(url_queries, num_queries, num_materialized_samples, delim
            labels_train, \
            labels_test, \
            max_num_joins, \
+           max_num_v1_joins, \
            max_num_predicates, \
+           max_num_predicates_uris, \
            train_dataset, \
            test_dataset

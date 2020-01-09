@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from mscn.util import *
 from mscn.data_sparql import get_train_datasets, load_data, make_dataset
 from mscn.model import SetConv
-
+import pandas as pd
 
 def unnormalize_torch(vals, min_val, max_val):
     vals = (vals * (max_val - min_val)) + min_val
@@ -36,18 +36,17 @@ def predict(model, data_loader, cuda):
     model.eval()
     for batch_idx, data_batch in enumerate(data_loader):
 
-        samples, predicates, joins, targets, sample_masks, predicate_masks, join_masks = data_batch
+        samples, predicates, joins, predicate_uris, targets, sample_masks, predicate_masks, join_masks, predicate_uri_masks = data_batch
 
         if cuda:
-            samples, predicates, joins, targets = samples.cuda(), predicates.cuda(), joins.cuda(), targets.cuda()
+            samples, predicates, predicates_uri, joins, targets = samples.cuda(), predicates.cuda(), predicate_uris.cuda(), joins.cuda(), targets.cuda()
             sample_masks, predicate_masks, join_masks = sample_masks.cuda(), predicate_masks.cuda(), join_masks.cuda()
-        samples, predicates, joins, targets = Variable(samples), Variable(predicates), Variable(joins), Variable(
-            targets)
-        sample_masks, predicate_masks, join_masks = Variable(sample_masks), Variable(predicate_masks), Variable(
-            join_masks)
+        samples, predicates, predicate_uris, joins, targets = Variable(samples), Variable(predicates), Variable(predicate_uris), Variable(joins), Variable(targets)
+        sample_masks, predicate_masks, predicate_uri_masks, join_masks = Variable(sample_masks), Variable(predicate_masks), Variable(predicate_uri_masks), Variable(join_masks)
 
         t = time.time()
-        outputs = model(samples, predicates, joins, sample_masks, predicate_masks, join_masks)
+        outputs = model(samples, predicates, predicate_uris, joins, sample_masks, predicate_masks, predicate_uri_masks, join_masks)
+
         t_total += time.time() - t
 
         for i in range(outputs.data.shape[0]):
@@ -72,7 +71,7 @@ def print_qerror(preds_unnorm, labels_unnorm):
     print("Mean: {}".format(np.mean(qerror)))
 
 
-def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_epochs, batch_size, hid_units, cuda, delimiter):
+def train_and_predict(workload_name, url_queries, num_queries, num_samples, num_epochs, batch_size, hid_units, cuda, delimiter):
     """
 
     :param workload_name:
@@ -88,28 +87,22 @@ def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_e
     """
     # Load training and validation data
     num_materialized_samples = num_samples
-    dicts, \
-    min_val, max_val, \
-    labels_train, \
-    labels_test, \
-    max_num_joins, \
-    max_num_predicates, \
-    train_data, \
-    test_data \
-        = get_train_datasets(
-        url_queries,
+    df_file = pd.read_csv(url_queries, delimiter=delimiter, engine='python')
+    msk = np.random.rand(len(df_file)) < 0.85
+    train = df_file[msk]
+    test = df_file[~msk]
+    dicts, min_val, max_val, labels_train, labels_test, max_num_joins, max_num_v1_joins, max_num_predicates, max_num_predicates_uris, train_data, test_data = get_train_datasets(
+        train,
         num_queries,
         num_materialized_samples,
         delimiter=delimiter
     )
-    table2vec, column2vec, op2vec, join2vec, columnuri2vec, opuri2vec, = dicts
-
+    table2vec, column2vec, op2vec, join2vec, join_v1_2vec, types_injoin_2vec, column2uris_vec, op2uris_vec, uris2uris_vec, len_predicates_uris_vector = dicts
     # Train model
-    sample_feats = len(table2vec)
-    # sample_feats = len(table2vec) + num_materialized_samples
-    predicate_feats = len(column2vec) + len(op2vec)
-    predicateuri_feats = len(columnuri2vec) + len(opuri2vec)
-    join_feats = len(join2vec)
+    sample_feats = len(table2vec) + num_materialized_samples
+    predicate_feats = len(column2vec) + len(op2vec) + 1
+    predicateuri_feats = len_predicates_uris_vector
+    join_feats = len(join_v1_2vec) * 2 + len(types_injoin_2vec)
 
     model = SetConv(sample_feats, predicate_feats, predicateuri_feats, join_feats, hid_units)
 
@@ -127,23 +120,16 @@ def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_e
 
         for batch_idx, data_batch in enumerate(train_data_loader):
 
-            samples, predicates, joins,predicates_uri, targets, sample_masks, predicate_masks, join_masks = data_batch
+            samples, predicates, joins, predicate_uris, targets, sample_masks, predicate_masks, join_masks, predicate_uri_masks = data_batch
 
             if cuda:
-                samples, predicates,predicates_uri, joins, targets = samples.cuda(), predicates.cuda(), predicates_uri.cuda(), joins.cuda(), targets.cuda()
+                samples, predicates,predicates_uri, joins, targets = samples.cuda(), predicates.cuda(), predicate_uris.cuda(), joins.cuda(), targets.cuda()
                 sample_masks, predicate_masks, join_masks = sample_masks.cuda(), predicate_masks.cuda(), join_masks.cuda()
-            samples, predicates,predicates_uri, joins, targets = Variable(samples), \
-                                                                 Variable(predicates), \
-                                                                 Variable(predicates_uri), \
-                                                                 Variable(joins),\
-                                                                 Variable(targets)
-            sample_masks, predicate_masks,predicate_uri_masks, join_masks = Variable(sample_masks),\
-                                                                            Variable(predicate_masks),\
-                                                                            Variable(predicate_uri_masks),\
-                                                                            Variable(join_masks)
+            samples, predicates,predicate_uris, joins, targets = Variable(samples), Variable(predicates), Variable(predicate_uris), Variable(joins), Variable(targets)
+            sample_masks, predicate_masks,predicate_uri_masks, join_masks = Variable(sample_masks), Variable(predicate_masks), Variable(predicate_uri_masks), Variable(join_masks)
 
             optimizer.zero_grad()
-            outputs = model(samples, predicates, joins, sample_masks, predicate_masks, join_masks)
+            outputs = model(samples, predicates, predicate_uris, joins, sample_masks, predicate_masks, predicate_uri_masks, join_masks)
             loss = qerror_loss(outputs, targets.float(), min_val, max_val)
             loss_total += loss.item()
             loss.backward()
@@ -174,8 +160,8 @@ def train_and_predict(workload_name, url_queries, num_queries,num_samples, num_e
     print("")
 
     # Load test data
-    file_name = "workloads/" + workload_name
-    joins,joins_v1, predicates, tables, samples, label = load_data(file_name, num_materialized_samples)
+    # file_name = "workloads/" + workload_name
+    joins, joins_v1, predicates, tables, samples, label = load_data(test, num_materialized_samples)
 
     # Get feature encoding and proper normalization
     samples_test = encode_samples(tables, samples, table2vec)

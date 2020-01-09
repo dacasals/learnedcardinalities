@@ -117,8 +117,8 @@ def get_min_max_vals(predicates, column_names):
 
 
 def normalize_data(val, column_name, column_min_max_vals):
-    min_val = column_min_max_vals[column_name][0]
-    max_val = column_min_max_vals[column_name][1]
+    min_val = float(column_min_max_vals[column_name][0])
+    max_val = float(column_min_max_vals[column_name][1])
     val = float(val)
     val_norm = 0.0
     if max_val > min_val:
@@ -225,28 +225,9 @@ def encode_data(predicates, joins, column_min_max_vals, column2vec, op2vec, join
             joins_enc[i].append(join_vec)
     return predicates_enc, joins_enc
 
-
-def encode_sparql_data(predicates, predicates_uris, joins, column2vec, op2vec, join2vec, column2uris_vec, op2uris_vec, uris2uris_vec):
-    """
-    Se codifica la dara utilizando los one_hot_vectors y la data
-    :param predicates:
-    :param predicates_uris:
-    :param joins:
-    :param column2vec:
-    :param op2vec:
-    :param join2vec:
-    :param column2uris_vec:
-    :param op2uris_vec:
-    :param uris2uris_vec:
-    :return:
-    """
-    predicates_enc = []
-    predicates_uris_enc = []
-    joins_enc = []
+def get_column_min_max_vals_preds(predicates):
     column_min_max_vals = {}
     for i, query in enumerate(predicates):
-        predicates_enc.append(list())
-        joins_enc.append(list())
         for predicate in query:
             if len(predicate) == 3:
                 # Proper predicate
@@ -265,14 +246,85 @@ def encode_sparql_data(predicates, predicates_uris, joins, column2vec, op2vec, j
                 else:
                     #Setting new entry with val as min and max.
                     column_min_max_vals[column] = [val,val]
+    return column_min_max_vals
+
+
+def get_column_min_max_cards_predsuris(predicates):
+    """
+    Get Column min max cardinalities for predicates
+    :param predicates:
+    :return:
+    """
+    column_min_max_cards = {}
+    for i, query in enumerate(predicates):
+        for predicate in query:
+            if len(predicate) == 4:
+                # Proper predicate
+                column = predicate[0]
+                card = predicate[3]
+                # norm_val = normalize_data(val, column, column_min_max_vals)
+                if column in column_min_max_cards:
+                    # If current min is minor of val set as min
+                    if column_min_max_cards[column][0] > card:
+                        column_min_max_cards[column][0] = card
+                    # If current max is major of val set as max
+                    if column_min_max_cards[column][1] < card:
+                        column_min_max_cards[column][1] = card
+
+                else:
+                    #Setting new entry with val as min and max.
+                    column_min_max_cards[column] = [card,card]
+    return column_min_max_cards
+
+def encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, predicates_uris, joins, column2vec, op2vec, join2vec, column2uris_vec, op2uris_vec, uris2uris_vec):
+    """
+    Se codifica la dara utilizando los one_hot_vectors y la data
+    :param column_min_max_vals:
+    :param column_min_max_cards:
+    :param predicates:
+    :param predicates_uris:
+    :param joins:
+    :param column2vec:
+    :param op2vec:
+    :param join2vec:
+    :param column2uris_vec:
+    :param op2uris_vec:
+    :param uris2uris_vec:
+    :return:
+    """
+    predicates_enc = []
+    predicates_uris_enc = []
+    joins_enc = []
+    # column_min_max_vals = {} If generated in other method
+    for i, query in enumerate(predicates):
+        predicates_enc.append(list())
+        joins_enc.append(list())
+        for predicate in query:
+            if len(predicate) == 3:
+                # Proper predicate
+                column = predicate[0]
+                operator = predicate[1]
+                val = float(predicate[2])
+                norm_val = normalize_data(val, column, column_min_max_vals)
+                # if column in column_min_max_vals:
+                #     # If current min is minor of val set as min
+                #     if column_min_max_vals[column][0] > val:
+                #         column_min_max_vals[column][0] = val
+                #     # If current max is major of val set as max
+                #     if column_min_max_vals[column][1] < val:
+                #         column_min_max_vals[column][1] = val
+                #
+                # else:
+                #     #Setting new entry with val as min and max.
+                #     column_min_max_vals[column] = [val,val]
                 pred_vec = []
                 pred_vec.append(column2vec[column])
                 pred_vec.append(op2vec[operator])
-                # pred_vec.append(norm_val)
+                pred_vec.append(norm_val)
                 pred_vec = np.hstack(pred_vec)
             else:
-                pred_vec = np.zeros((len(column2vec) + len(op2vec)))
-                # pred_vec = np.zeros((len(column2vec) + len(op2vec) + 1))
+                # pred_vec = np.zeros((len(column2vec) + len(op2vec)))
+                pred_vec = np.zeros((len(column2vec) + len(op2vec) + 1))
 
             predicates_enc[i].append(pred_vec)
 
@@ -290,21 +342,20 @@ def encode_sparql_data(predicates, predicates_uris, joins, column2vec, op2vec, j
                 column = predicate[0]
                 operator = predicate[1]
                 val = predicate[2]
-                cardinality_tpf = predicate[3]
-                # norm_val = normalize_data(val, column, column_min_max_vals)
+                cardinality_tpf = float(predicate[3])
+                norm_card = normalize_data(cardinality_tpf, column, column_min_max_cards)
 
                 pred_uri_vec = []
                 pred_uri_vec.append(column2uris_vec[column])
                 pred_uri_vec.append(op2uris_vec[operator])
-                # pred_vec.append(norm_val)
                 if val in uris2uris_vec:
                     pred_uri_vec.append(uris2uris_vec[val])
                 else:
                     pred_uri_vec.append(np.zeros((len(uris2uris_vec))))
 
-                pred_uri_vec.append(cardinality_tpf)
+                pred_uri_vec.append(norm_card)
                 pred_uri_vec = np.hstack(pred_uri_vec)
             else:
-                pred_uri_vec = np.zeros((len(column2uris_vec) + len(op2uris_vec)))
+                pred_uri_vec = np.zeros((len(column2uris_vec) + len(op2uris_vec) + len(uris2uris_vec) + 1))
             predicates_uris_enc[j].append(pred_uri_vec)
-    return predicates_enc, joins_enc, predicates_uris_enc, column_min_max_vals
+    return predicates_enc, joins_enc, predicates_uris_enc
