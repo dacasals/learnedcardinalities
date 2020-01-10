@@ -107,19 +107,40 @@ def load_and_encode_train_data(data, num_queries, num_materialized_samples, deli
     join_v1_2vec, idx2join_v1_ = get_set_encoding(table_injoin_names)
     types_injoin_2vec, idx2types_injoin = get_set_encoding(types_injoin_names)
 
-    # Get feature encoding and proper normalization
-    samples_enc  = encode_tables(tables, table2vec)
-    joins_v1_enc = encode_joins_v1(joins_v1, join_v1_2vec, types_injoin_2vec)
-    len_joins_v1_enc = len(join_v1_2vec) * 2 + len(types_injoin_2vec)
+    # # Get feature encoding and proper normalization
+    # samples_enc  = encode_tables(tables, table2vec)
+    # joins_v1_enc = encode_joins_v1(joins_v1, join_v1_2vec, types_injoin_2vec)
+    # len_joins_v1_enc = len(join_v1_2vec) * 2 + len(types_injoin_2vec)
 
     #Get Col_min_max_vals from data predicates
     column_min_max_vals = get_column_min_max_vals_preds(predicates)
     column_min_max_cards = get_column_min_max_cards_predsuris(predicates_uris)
 
     #Getting the encoded data form predicates, predicates_uris joins and additionaly column_min_max_vals of predicates.
-    predicates_enc, joins_enc, predicates_uris_enc = encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, predicates_uris, joins, column2vec, op2vec, join2vec,column2uris_vec, op2uris_vec, uris2uris_vec)
+    samples_enc, \
+    joins_v1_enc, \
+    predicates_enc, \
+    joins_enc, \
+    predicates_uris_enc = encode_sparql_data(
+        column_min_max_vals,
+        column_min_max_cards,
+        tables,
+        table2vec,
+        joins_v1,
+        join_v1_2vec,
+        types_injoin_2vec,
+        predicates,
+        predicates_uris,
+        joins,
+        column2vec,
+        op2vec,
+        join2vec,
+        column2uris_vec,
+        op2uris_vec,
+        uris2uris_vec
+    )
     label_norm, min_val, max_val = normalize_labels(label)
-    len_pred_uri_enc = len(predicates_uris_enc[0][0])
+    # len_pred_uri_enc = len(uris_set_names)
     # Split in training and validation samples
     num_train = int(data.shape[0] * 0.9)
     num_test = data.shape[0] - num_train
@@ -147,11 +168,12 @@ def load_and_encode_train_data(data, num_queries, num_materialized_samples, deli
     max_num_predicates = max(max([len(p) for p in predicates_train]), max([len(p) for p in predicates_test]))
     max_num_predicates_uris = max(max([len(p) for p in predicates_uri_train]), max([len(p) for p in predicates_uri_test]))
 
-    dicts = [table2vec, column2vec, op2vec, join2vec, join_v1_2vec, types_injoin_2vec, column2uris_vec, op2uris_vec, uris2uris_vec, len_pred_uri_enc]
+    dicts = [table2vec, column2vec, op2vec, join2vec, join_v1_2vec, types_injoin_2vec, column2uris_vec, op2uris_vec, uris2uris_vec]
     train_data = [samples_train, predicates_train, joins_train, joins_v1_train, predicates_uri_train]
     test_data =  [samples_test , predicates_test , joins_test , joins_v1_test , predicates_uri_test]
     return dicts,\
            column_min_max_vals, \
+           column_min_max_cards, \
            min_val, \
            max_val, \
            labels_train, \
@@ -261,6 +283,7 @@ def make_dataset(samples, predicates, joins, joins_v1, predicates_uri, labels, m
 def get_train_datasets(data, num_queries, num_materialized_samples, delimiter):
     dicts, \
     column_min_max_vals, \
+    column_min_max_cards, \
     min_val, max_val, \
     labels_train, \
     labels_test, \
@@ -298,6 +321,8 @@ def get_train_datasets(data, num_queries, num_materialized_samples, delimiter):
     )
     print("Created TensorDataset for validation data")
     return dicts, \
+           column_min_max_vals, \
+           column_min_max_cards, \
            min_val, \
            max_val, \
            labels_train, \

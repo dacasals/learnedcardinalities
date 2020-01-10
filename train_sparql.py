@@ -91,17 +91,17 @@ def train_and_predict(workload_name, url_queries, num_queries, num_samples, num_
     msk = np.random.rand(len(df_file)) < 0.85
     train = df_file[msk]
     test = df_file[~msk]
-    dicts, min_val, max_val, labels_train, labels_test, max_num_joins, max_num_v1_joins, max_num_predicates, max_num_predicates_uris, train_data, test_data = get_train_datasets(
+    dicts, column_min_max_vals, column_min_max_cards, min_val, max_val, labels_train, labels_test, max_num_joins, max_num_v1_joins, max_num_predicates, max_num_predicates_uris, train_data, test_data = get_train_datasets(
         train,
         num_queries,
         num_materialized_samples,
         delimiter=delimiter
     )
-    table2vec, column2vec, op2vec, join2vec, join_v1_2vec, types_injoin_2vec, column2uris_vec, op2uris_vec, uris2uris_vec, len_predicates_uris_vector = dicts
+    table2vec, column2vec, op2vec, join2vec, join_v1_2vec, types_injoin_2vec, column2uris_vec, op2uris_vec, uris2uris_vec = dicts
     # Train model
     sample_feats = len(table2vec) + num_materialized_samples
     predicate_feats = len(column2vec) + len(op2vec) + 1
-    predicateuri_feats = len_predicates_uris_vector
+    predicateuri_feats = len(column2uris_vec) + len(op2uris_vec)+ len(uris2uris_vec) + 1
     join_feats = len(join_v1_2vec) * 2 + len(types_injoin_2vec)
 
     model = SetConv(sample_feats, predicate_feats, predicateuri_feats, join_feats, hid_units)
@@ -161,21 +161,58 @@ def train_and_predict(workload_name, url_queries, num_queries, num_samples, num_
 
     # Load test data
     # file_name = "workloads/" + workload_name
-    joins, joins_v1, predicates, tables, samples, label = load_data(test, num_materialized_samples)
-
+    joins, joins_v1, predicates, predicates_uris, tables, samples, label = load_data(test, num_materialized_samples)
     # Get feature encoding and proper normalization
-    samples_test = encode_samples(tables, samples, table2vec)
-    predicates_test, joins_test = encode_sparql_data(predicates, joins, column2vec, op2vec, join2vec)
+    # samples_test = encode_tables(tables, table2vec)
+    # predicates_test, joins_test = encode_sparql_data(predicates, joins, column2vec, op2vec, join2vec)
+    # predicates_test, joins_test = encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, predicates_uris, joins, column2vec,
+    #                    op2vec, join2vec, column2uris_vec, op2uris_vec, uris2uris_vec)
+    samples_enc, \
+    joins_v1_enc, \
+    predicates_enc, \
+    joins_enc, \
+    predicates_uris_enc = encode_sparql_data(
+        column_min_max_vals,
+        column_min_max_cards,
+        tables,
+        table2vec,
+        joins_v1,
+        join_v1_2vec,
+        types_injoin_2vec,
+        predicates,
+        predicates_uris,
+        joins,
+        column2vec,
+        op2vec,
+        join2vec,
+        column2uris_vec,
+        op2uris_vec,
+        uris2uris_vec
+    )
     labels_test, _, _ = normalize_labels(label, min_val, max_val)
 
     print("Number of test samples: {}".format(len(labels_test)))
 
-    max_num_predicates = max([len(p) for p in predicates_test])
-    max_num_joins = max([len(j) for j in joins_test])
+    max_num_predicates = max([len(p) for p in predicates_enc])
+    max_num_joins = max([len(j) for j in joins_enc])
+    max_num_v1_joins = max([len(j) for j in joins_v1_enc])
+    max_num_predicates_uris = max([len(j) for j in predicates_uris_enc])
+
+    ##################
+
 
     # Get test set predictions
-    test_data = make_dataset(samples_test, predicates_test, joins_test, labels_test, max_num_joins, max_num_predicates)
-    test_data_loader = DataLoader(test_data, batch_size=batch_size)
+    test_data = [samples_enc, predicates_enc, joins_enc, joins_v1_enc, predicates_uris_enc]
+    test_dataset = make_dataset(
+        *test_data,
+        labels=labels_test,
+        max_num_joins=max_num_joins,
+        max_num_v1_joins=max_num_v1_joins,
+        max_num_predicates=max_num_predicates,
+        max_num_predicates_uris=max_num_predicates_uris
+    )
+
+    test_data_loader = DataLoader(test_dataset, batch_size=batch_size)
 
     preds_test, t_total = predict(model, test_data_loader, cuda)
     print("Prediction time per test sample: {}".format(t_total / len(labels_test) * 1000))
@@ -192,7 +229,7 @@ def train_and_predict(workload_name, url_queries, num_queries, num_samples, num_
     os.makedirs(os.path.dirname(file_name), exist_ok=True)
     with open(file_name, "w") as f:
         for i in range(len(preds_test_unnorm)):
-            f.write(str(preds_test_unnorm[i]) + "," + label[i] + "\n")
+            f.write(str(preds_test_unnorm[i]) + "," + str(label[i]) + "\n")
 
 
 def main():

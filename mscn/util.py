@@ -33,6 +33,7 @@ def get_all_column_op_uris_names(predicates):
                 op_names.add(op_name)
 
                 uri_name = predicate[2]
+                # If value cardinality es minor to 3 not include
                 if int(predicate[3]) > 3:
                     uri_names.add(uri_name)
 
@@ -117,12 +118,22 @@ def get_min_max_vals(predicates, column_names):
 
 
 def normalize_data(val, column_name, column_min_max_vals):
-    min_val = float(column_min_max_vals[column_name][0])
-    max_val = float(column_min_max_vals[column_name][1])
-    val = float(val)
+    """
+    Normalized to range [0,1]
+    Todo review other normalization type
+
+    :param val:
+    :param column_name:
+    :param column_min_max_vals:
+    :return:
+    """
     val_norm = 0.0
-    if max_val > min_val:
-        val_norm = (val - min_val) / (max_val - min_val)
+    if column_name in column_min_max_vals:
+        min_val = float(column_min_max_vals[column_name][0])
+        max_val = float(column_min_max_vals[column_name][1])
+        val = float(val)
+        if max_val > min_val:
+            val_norm = (val - min_val) / (max_val - min_val)
     return np.array(val_norm, dtype=np.float32)
 
 
@@ -169,7 +180,10 @@ def encode_tables(tables, table2vec):
         for j, table in enumerate(query):
             sample_vec = []
             # Append table one-hot vector
-            sample_vec.append(table2vec[table])
+            if table in table2vec:
+                sample_vec.append(table2vec[table])
+            else:
+                sample_vec.append(np.zeros(len(table2vec)))
             # Append bit vector
             sample_vec = np.hstack(sample_vec)
             samples_enc[i].append(sample_vec)
@@ -187,8 +201,15 @@ def encode_joins_v1(tables, join_v1_2vec, types_join_v1_2vec):
                 len_total = len(join_v1_2vec) * 2 + len(types_join_v1_2vec)
                 sample_vec.append(np.zeros(len_total))
             else:
-                sample_vec.append(join_v1_2vec[listData[0]])
-                sample_vec.append(join_v1_2vec[listData[1]])
+                #IF some preds not int joins in testing time adds zeros...
+                if listData[0] in join_v1_2vec:
+                    sample_vec.append(join_v1_2vec[listData[0]])
+                else:
+                    sample_vec.append(np.zeros(len(join_v1_2vec)))
+                if listData[1] in join_v1_2vec:
+                    sample_vec.append(join_v1_2vec[listData[1]])
+                else:
+                    sample_vec.append(np.zeros(len(join_v1_2vec)))
                 sample_vec.append(types_join_v1_2vec[listData[2]])
             # Append bit vector
             sample_vec = np.hstack(sample_vec)
@@ -210,7 +231,12 @@ def encode_data(predicates, joins, column_min_max_vals, column2vec, op2vec, join
                 norm_val = normalize_data(val, column, column_min_max_vals)
 
                 pred_vec = []
-                pred_vec.append(column2vec[column])
+                if column in column2vec:
+                    # In prediction time the columns could not be in column2Vec dictionary.
+                    pred_vec.append(column2vec[column])
+                else:
+                    pred_vec.append(np.zeros(len(column2vec)))
+
                 pred_vec.append(op2vec[operator])
                 pred_vec.append(norm_val)
                 pred_vec = np.hstack(pred_vec)
@@ -276,7 +302,7 @@ def get_column_min_max_cards_predsuris(predicates):
                     column_min_max_cards[column] = [card,card]
     return column_min_max_cards
 
-def encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, predicates_uris, joins, column2vec, op2vec, join2vec, column2uris_vec, op2uris_vec, uris2uris_vec):
+def encode_sparql_data(column_min_max_vals, column_min_max_cards,tables, table2vec,joins_v1, join_v1_2vec, types_injoin_2vec, predicates, predicates_uris, joins, column2vec, op2vec, join2vec, column2uris_vec, op2uris_vec, uris2uris_vec):
     """
     Se codifica la dara utilizando los one_hot_vectors y la data
     :param column_min_max_vals:
@@ -318,6 +344,8 @@ def encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, pr
                 #     #Setting new entry with val as min and max.
                 #     column_min_max_vals[column] = [val,val]
                 pred_vec = []
+                if column not in column2vec:
+                    continue
                 pred_vec.append(column2vec[column])
                 pred_vec.append(op2vec[operator])
                 pred_vec.append(norm_val)
@@ -330,7 +358,10 @@ def encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, pr
 
         for predicate in joins[i]:
             # Join instruction
-            join_vec = join2vec[predicate]
+            if predicate in join2vec:
+                join_vec = join2vec[predicate]
+            else:
+                join_vec = np.zeros((len(join2vec)))
             joins_enc[i].append(join_vec)
 
     for j, query2 in enumerate(predicates_uris):
@@ -341,15 +372,18 @@ def encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, pr
                 # Proper predicate
                 column = predicate[0]
                 operator = predicate[1]
-                val = predicate[2]
+                val_uri = predicate[2]
                 cardinality_tpf = float(predicate[3])
                 norm_card = normalize_data(cardinality_tpf, column, column_min_max_cards)
 
                 pred_uri_vec = []
-                pred_uri_vec.append(column2uris_vec[column])
+                if column in column2uris_vec:
+                    pred_uri_vec.append(column2uris_vec[column])
+                else:
+                    pred_uri_vec.append(np.zeros(len(column2uris_vec)))
                 pred_uri_vec.append(op2uris_vec[operator])
-                if val in uris2uris_vec:
-                    pred_uri_vec.append(uris2uris_vec[val])
+                if val_uri in uris2uris_vec:
+                    pred_uri_vec.append(uris2uris_vec[val_uri])
                 else:
                     pred_uri_vec.append(np.zeros((len(uris2uris_vec))))
 
@@ -358,4 +392,9 @@ def encode_sparql_data(column_min_max_vals, column_min_max_cards, predicates, pr
             else:
                 pred_uri_vec = np.zeros((len(column2uris_vec) + len(op2uris_vec) + len(uris2uris_vec) + 1))
             predicates_uris_enc[j].append(pred_uri_vec)
-    return predicates_enc, joins_enc, predicates_uris_enc
+
+        # Get feature encoding and proper normalization
+    samples_enc = encode_tables(tables, table2vec)
+    joins_v1_enc = encode_joins_v1(joins_v1, join_v1_2vec, types_injoin_2vec)
+
+    return samples_enc, joins_v1_enc, predicates_enc, joins_enc, predicates_uris_enc
